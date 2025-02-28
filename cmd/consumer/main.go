@@ -6,20 +6,19 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/rs/zerolog"
-
-	"github.com/oke11o/kafka-consumer/internal/app/consumer"
-	consumer_cfg "github.com/oke11o/kafka-consumer/internal/config/consumer"
+	"github.com/oke11o/kafka-example/internal/app/consumer"
+	consumer_cfg "github.com/oke11o/kafka-example/internal/config/consumer"
+	"github.com/oke11o/kafka-example/internal/logger"
 )
 
 func main() {
 	// Настройка логгера
-	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
+	log := logger.New()
 
 	// Загрузка конфигурации из переменных окружения
 	cfg, err := consumer_cfg.New()
 	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to load config")
+		log.Fatal().Err(err).Msg("Failed to load config")
 	}
 
 	// Создание конфигурации для приложения
@@ -30,7 +29,7 @@ func main() {
 	}
 
 	// Создание и запуск консьюмера
-	app := consumer.New(appCfg, logger)
+	app := consumer.New(appCfg, log)
 
 	// Контекст с отменой для graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -42,12 +41,13 @@ func main() {
 
 	go func() {
 		<-signals
-		logger.Info().Msg("Received shutdown signal")
+		log.Info().Msg("Received shutdown signal")
 		cancel()
 	}()
 
 	// Запуск приложения
 	if err := app.Run(ctx); err != nil {
-		logger.Fatal().Err(err).Msg("Failed to run consumer")
+		log.Fatal().Err(err).Msg("Failed to run consumer")
 	}
+	log.Info().Msg("Consumer stopped")
 }

@@ -1,4 +1,4 @@
-module github.com/oke11o/kafka-consumer
+module github.com/oke11o/kafka-example
 
 go 1.23
 
