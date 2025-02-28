@@ -7,24 +7,19 @@ import (
 	"syscall"
 
 	"github.com/IBM/sarama"
-	"github.com/kelseyhightower/envconfig"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-)
 
-type Config struct {
-	KafkaBrokers []string `envconfig:"kafka_brokers" default:"localhost:9092"`
-	KafkaTopic   string   `envconfig:"kafka_topic" default:"test-topic"`
-	GroupID      string   `envconfig:"group_id" default:"test-group"`
-}
+	consumer_cfg "github.com/oke11o/kafka-consumer/internal/config/consumer"
+)
 
 func main() {
 	// Настройка логгера
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 
 	// Загрузка конфигурации из переменных окружения
-	var cfg Config
-	if err := envconfig.Process("consumer", &cfg); err != nil {
+	cfg, err := consumer_cfg.New()
+	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load config")
 	}
 

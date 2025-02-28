@@ -1,4 +1,4 @@
-module kafka-consumer
+module github.com/oke11o/kafka-consumer
 
 go 1.21
 
