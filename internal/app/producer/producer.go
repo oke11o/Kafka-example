@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 )
 
 type Producer struct {
-	cfg *Config
+	cfg    *Config
+	logger zerolog.Logger
 }
 
 type Config struct {
@@ -18,9 +19,10 @@ type Config struct {
 	Topic   string
 }
 
-func New(cfg *Config) *Producer {
+func New(cfg *Config, logger zerolog.Logger) *Producer {
 	return &Producer{
-		cfg: cfg,
+		cfg:    cfg,
+		logger: logger,
 	}
 }
 
@@ -55,11 +57,11 @@ func (p *Producer) Run(ctx context.Context) error {
 				})
 
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to send message")
+					p.logger.Error().Err(err).Msg("Failed to send message")
 					continue
 				}
 
-				log.Info().
+				p.logger.Info().
 					Str("message", msg).
 					Int32("partition", partition).
 					Int64("offset", offset).

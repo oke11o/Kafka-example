@@ -4,12 +4,13 @@ import (
 	"context"
 
 	"github.com/IBM/sarama"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 )
 
 type Consumer struct {
-	ready chan bool
-	cfg   *Config
+	ready  chan bool
+	cfg    *Config
+	logger zerolog.Logger
 }
 
 type Config struct {
@@ -18,10 +19,11 @@ type Config struct {
 	GroupID string
 }
 
-func New(cfg *Config) *Consumer {
+func New(cfg *Config, logger zerolog.Logger) *Consumer {
 	return &Consumer{
-		ready: make(chan bool),
-		cfg:   cfg,
+		ready:  make(chan bool),
+		cfg:    cfg,
+		logger: logger,
 	}
 }
 
@@ -43,7 +45,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 		for {
 			err := group.Consume(ctx, []string{c.cfg.Topic}, c)
 			if err != nil {
-				log.Error().Err(err).Msg("Error from consumer")
+				c.logger.Error().Err(err).Msg("Error from consumer")
 			}
 			if ctx.Err() != nil {
 				return
@@ -53,7 +55,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 	}()
 
 	<-c.ready
-	log.Info().Msg("Consumer is ready")
+	c.logger.Info().Msg("Consumer is ready")
 
 	<-ctx.Done()
 	return nil
@@ -78,7 +80,7 @@ func (c *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim saram
 			if message == nil {
 				return nil
 			}
-			log.Info().
+			c.logger.Info().
 				Str("topic", message.Topic).
 				Int32("partition", message.Partition).
 				Int64("offset", message.Offset).
