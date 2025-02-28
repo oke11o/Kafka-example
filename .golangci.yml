@@ -1,0 +1,28 @@
+run:
+  timeout: 5m
+linters:
+  disable-all: true
+  enable:
+    - asasalint
+    - copyloopvar
+    - decorder
+    - durationcheck
+    - exhaustive
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - gofmt
+    - gosimple
+    - gosmopolitan
+    - govet
+    - ineffassign
+    - nilerr
+    - reassign
+    - staticcheck
+    - typecheck
+    - unconvert
+    - unused
+issues:
+  exclude-rules:
+    - linters:
+        - staticcheck
+      text: "SA1019:"
