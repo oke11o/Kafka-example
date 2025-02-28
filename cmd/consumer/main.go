@@ -12,40 +12,26 @@ import (
 )
 
 func main() {
-	// Настройка логгера
 	log := logger.New()
-
-	// Загрузка конфигурации из переменных окружения
 	cfg, err := consumer_cfg.New()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load config")
 	}
 
-	// Создание конфигурации для приложения
-	appCfg := &consumer.Config{
-		Brokers: cfg.KafkaBrokers,
-		Topic:   cfg.KafkaTopic,
-		GroupID: cfg.GroupID,
-	}
+	app := consumer.New(cfg, log)
 
-	// Создание и запуск консьюмера
-	app := consumer.New(appCfg, log)
-
-	// Контекст с отменой для graceful shutdown
+	// Graceful
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	// Обработка сигналов для graceful shutdown
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-
 	go func() {
 		<-signals
 		log.Info().Msg("Received shutdown signal")
 		cancel()
 	}()
 
-	// Запуск приложения
+	// Run
 	if err := app.Run(ctx); err != nil {
 		log.Fatal().Err(err).Msg("Failed to run consumer")
 	}

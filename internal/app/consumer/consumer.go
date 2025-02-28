@@ -5,21 +5,18 @@ import (
 
 	"github.com/IBM/sarama"
 	"github.com/rs/zerolog"
+
+	"github.com/oke11o/kafka-example/internal/config/consumer"
 )
 
 type Consumer struct {
 	ready  chan bool
-	cfg    *Config
+	cfg    *consumer.Config
 	logger zerolog.Logger
 }
 
-type Config struct {
-	Brokers []string
-	Topic   string
-	GroupID string
-}
-
-func New(cfg *Config, logger zerolog.Logger) *Consumer {
+// New creates new Consumer instance
+func New(cfg *consumer.Config, logger zerolog.Logger) *Consumer {
 	return &Consumer{
 		ready:  make(chan bool),
 		cfg:    cfg,
@@ -34,7 +31,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 	config.Consumer.Offsets.Initial = sarama.OffsetNewest
 
 	// Создание consumer group
-	group, err := sarama.NewConsumerGroup(c.cfg.Brokers, c.cfg.GroupID, config)
+	group, err := sarama.NewConsumerGroup(c.cfg.KafkaBrokers, c.cfg.GroupID, config)
 	if err != nil {
 		return err
 	}
@@ -43,7 +40,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 	// Запуск процесса потребления
 	go func() {
 		for {
-			err := group.Consume(ctx, []string{c.cfg.Topic}, c)
+			err := group.Consume(ctx, []string{c.cfg.KafkaTopic}, c)
 			if err != nil {
 				c.logger.Error().Err(err).Msg("Error from consumer")
 			}

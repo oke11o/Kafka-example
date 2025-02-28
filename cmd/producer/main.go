@@ -21,14 +21,8 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to load config")
 	}
 
-	// Создание конфигурации для приложения
-	appCfg := &producer.Config{
-		Brokers: cfg.KafkaBrokers,
-		Topic:   cfg.KafkaTopic,
-	}
-
 	// Создание и запуск продюсера
-	app := producer.New(appCfg, log)
+	app := producer.New(cfg, log)
 
 	// Контекст с отменой для graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
