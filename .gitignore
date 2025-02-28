@@ -24,3 +24,7 @@ go.work.sum
 # env file
 .env
 .envrc
+
+# OS specific files
+.DS_Store
+

@@ -1,6 +1,7 @@
-.PHONY: build clean
+.PHONY: build clean lint lint-install
 
 BINARY_DIR=bin
+GOLANGCI_LINT_VERSION=v1.63.4
 
 build: build-consumer build-producer
 
@@ -23,4 +24,18 @@ run-consumer:
 
 run-producer:
 	go run cmd/producer/main.go
+
+lint-install:
+	@echo "Installing golangci-lint..."
+	@mkdir -p $(BINARY_DIR)
+	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell pwd)/$(BINARY_DIR) $(GOLANGCI_LINT_VERSION)
+
+lint:
+	@echo "Running linters..."
+	@./$(BINARY_DIR)/golangci-lint run ./...
+
+.PHONY: test
+test:
+	@echo "Running tests..."
+	@go test -v -race ./...
 
