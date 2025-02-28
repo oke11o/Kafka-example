@@ -12,33 +12,26 @@ import (
 )
 
 func main() {
-	// Настройка логгера
 	log := logger.New()
-
-	// Загрузка конфигурации
 	cfg, err := producer_cfg.New()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load config")
 	}
 
-	// Создание и запуск продюсера
 	app := producer.New(cfg, log)
 
-	// Контекст с отменой для graceful shutdown
+	// Graceful
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	// Обработка сигналов для graceful shutdown
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-
 	go func() {
 		<-signals
 		log.Info().Msg("Received shutdown signal")
 		cancel()
 	}()
 
-	// Запуск приложения
+	// Run
 	if err := app.Run(ctx); err != nil {
 		log.Fatal().Err(err).Msg("Failed to run producer")
 	}
