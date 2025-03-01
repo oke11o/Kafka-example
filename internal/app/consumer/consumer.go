@@ -4,24 +4,23 @@ import (
 	"context"
 
 	"github.com/IBM/sarama"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
+
+	"github.com/oke11o/kafka-example/internal/config/consumer"
 )
 
 type Consumer struct {
-	ready chan bool
-	cfg   *Config
+	ready  chan bool
+	cfg    *consumer.Config
+	logger zerolog.Logger
 }
 
-type Config struct {
-	Brokers []string
-	Topic   string
-	GroupID string
-}
-
-func New(cfg *Config) *Consumer {
+// New creates new Consumer instance
+func New(cfg *consumer.Config, logger zerolog.Logger) *Consumer {
 	return &Consumer{
-		ready: make(chan bool),
-		cfg:   cfg,
+		ready:  make(chan bool),
+		cfg:    cfg,
+		logger: logger,
 	}
 }
 
@@ -32,7 +31,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 	config.Consumer.Offsets.Initial = sarama.OffsetNewest
 
 	// Создание consumer group
-	group, err := sarama.NewConsumerGroup(c.cfg.Brokers, c.cfg.GroupID, config)
+	group, err := sarama.NewConsumerGroup(c.cfg.KafkaBrokers, c.cfg.GroupID, config)
 	if err != nil {
 		return err
 	}
@@ -41,9 +40,9 @@ func (c *Consumer) Run(ctx context.Context) error {
 	// Запуск процесса потребления
 	go func() {
 		for {
-			err := group.Consume(ctx, []string{c.cfg.Topic}, c)
+			err := group.Consume(ctx, []string{c.cfg.KafkaTopic}, c)
 			if err != nil {
-				log.Error().Err(err).Msg("Error from consumer")
+				c.logger.Error().Err(err).Msg("Error from consumer")
 			}
 			if ctx.Err() != nil {
 				return
@@ -53,7 +52,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 	}()
 
 	<-c.ready
-	log.Info().Msg("Consumer is ready")
+	c.logger.Info().Msg("Consumer is ready")
 
 	<-ctx.Done()
 	return nil
@@ -78,7 +77,7 @@ func (c *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim saram
 			if message == nil {
 				return nil
 			}
-			log.Info().
+			c.logger.Info().
 				Str("topic", message.Topic).
 				Int32("partition", message.Partition).
 				Int64("offset", message.Offset).

@@ -6,48 +6,34 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-
-	"github.com/oke11o/kafka-consumer/internal/app/producer"
-	producer_cfg "github.com/oke11o/kafka-consumer/internal/config/producer"
+	"github.com/oke11o/kafka-example/internal/app/producer"
+	producer_cfg "github.com/oke11o/kafka-example/internal/config/producer"
+	"github.com/oke11o/kafka-example/internal/logger"
 )
 
 func main() {
-	// Настройка логгера
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
-
-	// Загрузка конфигурации
+	log := logger.New()
 	cfg, err := producer_cfg.New()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load config")
 	}
 
-	// Создание конфигурации для приложения
-	appCfg := &producer.Config{
-		Brokers: cfg.KafkaBrokers,
-		Topic:   cfg.KafkaTopic,
-	}
+	app := producer.New(cfg, log)
 
-	// Создание и запуск продюсера
-	app := producer.New(appCfg)
-
-	// Контекст с отменой для graceful shutdown
+	// Graceful
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	// Обработка сигналов для graceful shutdown
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-
 	go func() {
 		<-signals
 		log.Info().Msg("Received shutdown signal")
 		cancel()
 	}()
 
-	// Запуск приложения
+	// Run
 	if err := app.Run(ctx); err != nil {
 		log.Fatal().Err(err).Msg("Failed to run producer")
 	}
+	log.Info().Msg("Producer stopped")
 }
