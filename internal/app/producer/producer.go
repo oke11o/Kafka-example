@@ -3,13 +3,14 @@ package producer
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/rs/zerolog"
+	"github.com/satori/go.uuid"
 
 	producer_cfg "github.com/oke11o/kafka-example/internal/config/producer"
-	"github.com/satori/go.uuid"
 )
 
 type Producer struct {
@@ -26,19 +27,16 @@ func New(cfg *producer_cfg.Config, logger zerolog.Logger) *Producer {
 }
 
 func (p *Producer) RunSimple(ctx context.Context) error {
-	// Конфигурация Kafka
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = true
 	config.Producer.Return.Errors = true
 
-	// Создание producer
 	producer, err := sarama.NewSyncProducer(p.cfg.KafkaBrokers, config)
 	if err != nil {
 		return fmt.Errorf("failed to create producer: %w", err)
 	}
 	defer producer.Close()
 
-	// Канал для отслеживания завершения отправки сообщений
 	done := make(chan error)
 
 	go func() {
@@ -81,59 +79,101 @@ func (p *Producer) RunSimple(ctx context.Context) error {
 }
 
 func (p *Producer) Run(ctx context.Context) error {
-	// Конфигурация Kafka
+	producer, err := NewKafkaProducer(p.cfg.KafkaBrokers, p.logger)
+	if err != nil {
+		log.Fatalf("Ошибка создания продюсера: %v", err)
+	}
+	defer producer.Close()
+
+	msgs := make([]*sarama.ProducerMessage, 0)
+	for i := 1; i <= 10; i++ {
+		msg := fmt.Sprintf("Message %d at %v", i, time.Now().Format(time.RFC3339))
+		msgs = append(msgs, &sarama.ProducerMessage{
+			Topic: p.cfg.KafkaTopic,
+			Value: sarama.StringEncoder(msg),
+		})
+	}
+	err = producer.SendBatchWithRetry(ctx, msgs)
+	if err != nil {
+		log.Printf("Ошибка отправки batch: %v", err)
+		return err
+	}
+	return nil
+}
+
+func getProducerConfig() *sarama.Config {
 	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true // Обя зательно для SyncProducer
-	config.Producer.Return.Errors = true
 	config.Producer.Idempotent = true
 	config.Producer.RequiredAcks = sarama.WaitForAll
 	config.Net.MaxOpenRequests = 1
 	config.Producer.Transaction.ID = fmt.Sprintf("txn-%s", uuid.NewV4().String())
+	config.Producer.Return.Errors = true
+	config.Producer.Return.Successes = true // Обязательно для SyncProducer
 	config.Version = sarama.V3_6_0_0
 
-	// Создание producer
-	producer, err := sarama.NewSyncProducer(p.cfg.KafkaBrokers, config)
+	return config
+}
+
+type KafkaProducer struct {
+	producer sarama.SyncProducer
+	brokers  []string
+	logger   zerolog.Logger
+}
+
+func NewKafkaProducer(brokers []string, logger zerolog.Logger) (*KafkaProducer, error) {
+	config := getProducerConfig()
+
+	producer, err := sarama.NewSyncProducer(brokers, config)
 	if err != nil {
-		return fmt.Errorf("failed to create producer: %w", err)
+		return nil, fmt.Errorf("ошибка создания продюсера: %w", err)
 	}
-	defer producer.Close()
 
-	// Канал для отслеживания завершения отправки сообщений
-	done := make(chan error)
+	return &KafkaProducer{
+		producer: producer,
+		brokers:  brokers,
+		logger:   logger,
+	}, nil
+}
 
-	go func() {
-		err = producer.BeginTxn()
+func (kp *KafkaProducer) SendBatchWithRetry(ctx context.Context, messages []*sarama.ProducerMessage) error {
+	const (
+		maxRetries = 3
+		baseDelay  = time.Second
+	)
+
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if err := kp.producer.BeginTxn(); err != nil {
+			lastErr = fmt.Errorf("ошибка начала транзакции: %w", err)
+			time.Sleep(baseDelay * time.Duration(attempt+1))
+			continue
+		}
+
+		err := kp.producer.SendMessages(messages)
 		if err != nil {
-			done <- fmt.Errorf("failed to begin transaction: %w", err)
-		}
-		msgs := make([]*sarama.ProducerMessage, 0)
-		for i := 1; i <= 10; i++ {
-			msg := fmt.Sprintf("Message %d at %v", i, time.Now().Format(time.RFC3339))
-			msgs = append(msgs, &sarama.ProducerMessage{
-				Topic: p.cfg.KafkaTopic,
-				Value: sarama.StringEncoder(msg),
-			})
-		}
-		err = producer.SendMessages(msgs)
-		if err != nil {
-			_ = producer.AbortTxn()
-			done <- fmt.Errorf("failed to begin transaction: %w", err)
-			return
+			if err := kp.producer.AbortTxn(); err != nil {
+				kp.logger.Info().Msgf("Ошибка отмены транзакции: %v", err)
+			}
+			time.Sleep(baseDelay * time.Duration(attempt+1))
+			continue
 		}
 
-		if err := producer.CommitTxn(); err != nil {
-			_ = producer.AbortTxn()
-			done <- fmt.Errorf("failed to begin transaction: %w", err)
-			return
+		if err := kp.producer.CommitTxn(); err != nil {
+			lastErr = fmt.Errorf("ошибка коммита транзакции: %w", err)
+			time.Sleep(baseDelay * time.Duration(attempt+1))
+			continue
 		}
-		p.logger.Info().Msg("Message committed")
-		done <- nil
-	}()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-done:
-		return err
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
 	}
+
+	return fmt.Errorf("превышено количество попыток. Последняя ошибка: %w", lastErr)
+}
+
+func (kp *KafkaProducer) Close() error {
+	return kp.producer.Close()
 }
