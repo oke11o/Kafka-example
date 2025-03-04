@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/rs/zerolog"
 	"github.com/satori/go.uuid"
 
@@ -136,17 +137,9 @@ func NewKafkaProducer(brokers []string, logger zerolog.Logger) (*KafkaProducer, 
 }
 
 func (kp *KafkaProducer) SendBatchWithRetry(ctx context.Context, messages []*sarama.ProducerMessage) error {
-	const (
-		maxRetries = 3
-		baseDelay  = time.Second
-	)
-
-	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	operation := func() error {
 		if err := kp.producer.BeginTxn(); err != nil {
-			lastErr = fmt.Errorf("ошибка начала транзакции: %w", err)
-			time.Sleep(baseDelay * time.Duration(attempt+1))
-			continue
+			return fmt.Errorf("failed to begin transaction: %w", err)
 		}
 
 		err := kp.producer.SendMessages(messages)
@@ -154,24 +147,23 @@ func (kp *KafkaProducer) SendBatchWithRetry(ctx context.Context, messages []*sar
 			if err := kp.producer.AbortTxn(); err != nil {
 				kp.logger.Info().Msgf("Ошибка отмены транзакции: %v", err)
 			}
-			time.Sleep(baseDelay * time.Duration(attempt+1))
-			continue
+			return fmt.Errorf("failed to send batch: %w", err)
 		}
 
 		if err := kp.producer.CommitTxn(); err != nil {
-			lastErr = fmt.Errorf("ошибка коммита транзакции: %w", err)
-			time.Sleep(baseDelay * time.Duration(attempt+1))
-			continue
+			return fmt.Errorf("failed to commit transaction: %w", err)
 		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			return nil
-		}
+		return nil
 	}
 
-	return fmt.Errorf("превышено количество попыток. Последняя ошибка: %w", lastErr)
+	b := backoff.WithContext(backoff.NewExponentialBackOff(
+		backoff.WithInitialInterval(backoff.DefaultInitialInterval),
+	), ctx)
+	err := backoff.Retry(operation, b)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (kp *KafkaProducer) Close() error {
