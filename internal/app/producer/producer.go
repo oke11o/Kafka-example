@@ -87,7 +87,7 @@ func (p *Producer) Run(ctx context.Context) error {
 	defer producer.Close()
 
 	msgs := make([]*sarama.ProducerMessage, 0)
-	for i := 1; i <= 10; i++ {
+	for i := 1; i <= 3; i++ {
 		msg := fmt.Sprintf("Message %d at %v", i, time.Now().Format(time.RFC3339))
 		msgs = append(msgs, &sarama.ProducerMessage{
 			Topic: p.cfg.KafkaTopic,

@@ -17,6 +17,7 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load config")
 	}
+	log.Info().Any("config", cfg).Msg("start producer service")
 
 	app := producer.New(cfg, log)
 
